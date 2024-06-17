@@ -1,0 +1,39 @@
+{
+    "testConditions": {
+        "temp": 20,
+        "tBurn": 0.3,
+        "Analysis_tS": 0.2,
+        "Analysis_tE": 0.3,
+        "filmCooling": false,
+        "detonation": false
+    },
+    "propellant":{
+        "ox": {
+            "cd": 0.862326133,
+            "cdErr": 0.009321881,
+            "gasConst": 259.8206194,
+            "diameterM": 0.0008,
+            "numInj": 24,
+            "sigmaStar": 0.683834768,
+            "molMass": 31.999
+        },
+        "f": {
+            "cd": 0.792745728,
+            "cdErr": 0.059926322,
+            "gasConst": 296.3675899,
+            "diameterM": 0.0008,
+            "numInj": 24,
+            "sigmaStar": 0.656279941,
+            "molMass": 28.053
+        },
+        "n": {
+            "cd": 0.838189498,
+            "cdErr": 0.00974435,
+            "gasConst": 296.716631,
+            "diameterM": 0.0004,
+            "numInj": 48,
+            "sigmaStar": 0.696288318,
+            "molMass": 28.02
+        }
+    }
+}

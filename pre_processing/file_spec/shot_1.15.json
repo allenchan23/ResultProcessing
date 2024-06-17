@@ -1,0 +1,21 @@
+{
+    "temperature": {
+        "header": ["t", "T1", "T2", "T3","T4","T5","T6","T7","T8","T9","TC"],
+        "units": "K",
+        "compress": true,
+        "errors": {
+        }
+    },
+    "vibration": {
+        "header": ["t", "a"],
+        "calibration": [],
+        "errors": {
+        }
+    },
+    "pressureThrust":{
+        "header": ["t","trig", "T", "PTO", "PTF","POx","PF","PC","P0","P1","P2","P3","PV","PTC"],
+        "calibration": [0, 0, -128.68, 20, 20, 10, 10, 10, 2, 2, 2, 2, 0.5, 20],
+        "errors": {
+        }
+    }
+}

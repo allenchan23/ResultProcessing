@@ -1,0 +1,26 @@
+{
+    "stage": "S1",
+    "testNames": [
+        "shot_1.01",
+        "shot_1.02",
+        "shot_1.03",
+        "shot_1.04",
+        "shot_1.05",
+        "shot_1.06",
+        "shot_1.07",
+        "shot_1.08",
+        "shot_1.09",
+        "shot_1.10",
+        "shot_1.11",
+        "shot_1.12",
+        "shot_1.13",
+        "shot_1.14",
+        "shot_1.15",
+        "shot_1.16",
+        "shot_1.17",
+        "shot_1.18",
+        "shot_1.19",
+        "shot_1.20"
+    ],
+    "process": ["T","P","V"]
+}
