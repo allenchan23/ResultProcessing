@@ -14,6 +14,7 @@ Summary of test firing results to CSV File
 """
 # Standard temperature
 TEMP_STANDARD = 273.15
+R_UNIVERSAL = 8314
 
 # Result Summary Class
 class PerformanceSummary:
@@ -44,7 +45,7 @@ class PerformanceSummary:
 
 
 # Representative value generator class
-class RepresentativeValuesGenerater():
+class timeHistoryCalculator():
 
     def __init__(self, target_df, time_column, t_start, t_end):
         self.target_df   = target_df
@@ -54,7 +55,7 @@ class RepresentativeValuesGenerater():
 
 
     def get_time_average(self, target_columnm, allow_return_tstd_err=False):
-        target_values = self.target_df[(self.target_df[self.time_column] >= self.t_start) & (df1[self.time_column] <= self.t_end)][target_columnm]
+        target_values = self.target_df[(self.target_df[self.time_column] >= self.t_start) & (self.target_df[self.time_column] <= self.t_end)][target_columnm]
         if allow_return_tstd_err:
             tstd_err = tstd(target_values, ddof=1)[0]
             return target_values.mean().iloc[0], tstd_err
@@ -63,11 +64,11 @@ class RepresentativeValuesGenerater():
 
 # Injector Class
 class Injector:
-    def __init__(self ,diameter, count, cd = 1, cdErr = 0):
-        self.diameter = diameter
-        self.cd = cd
-        self.cdErr = cdErr
-        self.count = count
+    def __init__(self ,injectorJSON):
+        self.diameter = injectorJSON.get("diameter")
+        self.cd = injectorJSON.get("cd")
+        self.cdErr = injectorJSON.get("cdErr")
+        self.count = injectorJSON.get("nOrifice")
         self.area = self.calInjArea()
 
 
@@ -85,6 +86,54 @@ class Injector:
 
     def getArea(cls):
         return cls.area
+
+class Chamber:
+    def __init__(self, chamberJSON):
+        self.diameter = chamberJSON.get("diameter")
+        self.At = np.pi*(self.diameter/2)**2
+
+    def getThroatArea(cls):
+        return cls.At
+
+# Propellant Class
+class Prop:
+    def __init__(self, propellantJSON):
+        self.type = propellantJSON.get("compound")
+        self.gamma = propellantJSON.get("gamma")
+        self.molMass = propellantJSON.get("molMass")
+        self.gasConst = R_UNIVERSAL/propellantJSON.get("molMass")
+        self.sigmaStar = self.calSigStar()
+
+
+    def calSigStar(cls):
+        """
+        Calculate mass flow coefficient
+        """
+        gamma = cls.gamma
+        return np.sqrt(gamma*(2/(gamma+1))**((gamma+1)/(gamma-1)))
+
+
+    def getMolMass(cls):
+        return cls.molMass
+
+
+    def getGamma(cls):
+        return cls.gamma
+
+
+    def getSigmaStar(cls):
+        return cls.sigmaStar
+
+
+    def getR(cls):
+        return cls.gasConst
+
+
+def ftps2mps(speed_ftps):
+    """
+    Converts feet per second to meters per second
+    """
+    return speed_ftps*0.3048
 
 
 def deg2kel(temp_deg, temp_stndard = TEMP_STANDARD):
@@ -107,29 +156,72 @@ def MPa2Pa(pMPa):
     """
     return pMPa*1000000
 
+def getStoichometricRatio(oxidizer, fuel):
+    if (oxidizer.type == "O2") and (fuel.type == "C2H4"):
+        FA_stoic = (fuel.getMolMass())/(3*oxidizer.getMolMass())
+        return FA_stoic
+    else:
+        print("ERROR NO PROPELLANT COMBINATION")
+        return 0
 
-def calMdot(prop, inj, p, T):
+
+def calMdot(prop, inj, p, pErr, T):
     """
-    Calculate mass flow rate
+    Calculate experimental mass flow rate and error
     """
     # Get injector properties
     cd = inj.getCd()
+    cdErr = inj.getCdErr()
     A = inj.getArea()
+
     # Get gas properties
-    gamma = prop.get("gasConst")
-    sigStar = calSigStar(gamma)
+    R = prop.getR()
+    sigStar = prop.getSigmaStar()
 
-    # Calcualte mdot
-    mdot = cd * p * A / np.sqrt(gamma * T) * sigStar
-    return mdot
+    # Calcualte mdot and propagation error
+    mdot = cd * p * A / np.sqrt(R * T) * sigStar
+    mdotErr = calcPropErr(val = mdot, var1 = p, var2 = cd, var1Err = pErr, var2Err = cdErr)
+    return mdot, mdotErr
 
 
-def calSigStar(gamma):
+def calcER(oxidizer, fuel, mdotOx, mdotOF, mdotOx_err, mdotF_err):
     """
-    Calculate mass flow coefficient
+    Calculate experimental equivalence ratio and error
     """
-    return np.sqrt(gamma*(2/(gamma+1))^((gamma+1)/(gamma-1)))
+    FA_stoic = getStoichometricRatio(oxidizer,fuel)
+    FA_exp= mdotOF/mdotOx
+    equiv = FA_exp/FA_stoic
+    equiv_err = calcPropErr(val = equiv, var1 = mdotOx, var2 = mdotOF, var1Err = mdotOx_err, var2Err = mdotF_err)
+    return equiv, equiv_err
 
+
+def calcCP(mdotTotal, mdotCoolant, mdotTotal_err, mdotCoolant_err):
+    """
+    Calculate experimental cooling percentage
+    """
+    if mdotCoolant == 0:
+        coolantPer = 0
+        coolantPer_err = 0
+    else:
+        coolantPer = mdotCoolant/mdotTotal
+        coolantPer_err = calcPropErr(val = coolantPer, var1 = mdotTotal, var2 = mdotCoolant, var1Err = mdotTotal_err, var2Err = mdotCoolant_err)
+
+    return coolantPer, coolantPer_err
+
+def calcExpIsp():
+    return 0
+
+def calcIdealIsp():
+    return 0
+
+def calcExpCstar(chamber,m):
+    return 0
+
+def calcIdealCstar(chamber, mdot, pc, mdotT_err = 0, pc_er = 0):
+    At = chamber.getThroatArea()
+    cstar = pc*At/mdot
+    cstar_err = calcPropErr(val = cstar, var1 = mdot, var2 = pc, var1Err = mdotT_err, var2Err = pc_er)
+    return cstar, cstar_err
 
 def calcPropErr(val, var1, var2, var1Err, var2Err):
     """
@@ -155,6 +247,128 @@ def performanceSummary(filePath, testName, stage):
         conditionPath = os.path.join(Path(__file__).parent,"conditions",testName + ".json")
         conditions = json.load(open(conditionPath, encoding="utf-8"))
 
+        # Overall Test Conditions
+        temp = conditions.get("testConditions").get("temp")
+        t0 = conditions.get("testConditions").get("Analysis_tS")
+        t1 = conditions.get("testConditions").get("Analysis_tE")
+        cooling = conditions.get("testConditions").get("filmCooling")
+        detonation = conditions.get("testConditions").get("detonation")
+
+        # Chamber Class
+        chamber = Chamber(conditions.get("chamber"))
+
+        # Injector Classes
+        injectors = conditions.get("injectors")
+        oxidizerInj = Injector(injectors.get("oxidizer"))
+        fuelInj = Injector(injectors.get("fuel"))
+        CoolantInj = Injector(injectors.get("coolant"))
+
+        # Propellant Classes
+        propellants = conditions.get("propellants")
+        oxidizer = Prop(propellants.get("oxidizer"))
+        fuel = Prop(propellants.get("fuel"))
+        coolant = Prop(propellants.get("coolant"))
+
+        # Load test file data
+        df = pd.read_csv(filePath)
+
+        # Initialise time hsitory calcualtors
+        burnTimeTHC = timeHistoryCalculator(
+            target_df=df,
+            time_column="t",
+            t_start=t0,
+            t_end=t1
+        )
+
+        preBurnTHC = timeHistoryCalculator(
+            target_df=df,
+            time_column="t",
+            t_start=-3,
+            t_end=-2
+        )
+
+
+        # initialize reps_dict
+        res_dict = {}
+
+        # Oxygen Calculations
+        pOx, pOx_err = burnTimeTHC.get_time_average(target_columnm=["POx"], allow_return_tstd_err=True)
+        mdotOx, mdotOx_err = calMdot(prop = oxidizer, inj = oxidizerInj, p = MPa2Pa(pOx), pErr = MPa2Pa(pOx_err), T = deg2kel(temp))
+        res_dict["POx_MPa"                       ] = pOx
+        res_dict["POx_err_MPa"                   ] = pOx_err
+        res_dict["MdotOx_kgps"                   ] = mdotOx
+        res_dict["MdotOx_err_kgps"               ] = mdotOx_err
+
+        # Fuel Calculations
+        pF, pF_err = burnTimeTHC.get_time_average(target_columnm=["PF"], allow_return_tstd_err=True)
+        mdotF, mdotF_err = calMdot(prop = fuel, inj = fuelInj, p = MPa2Pa(pF), pErr = MPa2Pa(pF_err), T = deg2kel(temp))
+        res_dict["PFu_MPa"                       ] = pF
+        res_dict["PFu_err_MPa"                   ] = pF_err
+        res_dict["MdotFu_kgps"                   ] = mdotF
+        res_dict["MdotFu_err_kgps"               ] = mdotF_err
+
+        # Coolant Calculations
+        if cooling:
+            pCo, pCo_err = burnTimeTHC.get_time_average(target_columnm=["PC"], allow_return_tstd_err=True)
+            mdotCo, mdotCo_err = calMdot(prop = coolant, inj = CoolantInj, p = MPa2Pa(pCo), pErr = MPa2Pa(pCo_err), T = deg2kel(temp))
+        else:
+            pCo = 0
+            pCo_err = 0
+            mdotCo = 0
+            mdotCo_err = 0
+
+        res_dict["Film_Cooling"                  ] = True
+        res_dict["PCo_MPa"                       ] = pCo
+        res_dict["PCo_err_MPa"                   ] = pCo_err
+        res_dict["MdotCo_kgps"                   ] = mdotCo
+        res_dict["MdotCo_Err_kgps"               ] = mdotCo_err
+
+        # Total values
+        mdotP = mdotOx + mdotF
+        mdotP_err = mdotOx_err + mdotF_err
+        mdotT = mdotP + mdotCo
+        mdotT_err = mdotP_err + mdotCo_err
+
+        # Equivalence Ratio
+        ER, ER_err = calcER(oxidizer = oxidizer, fuel = fuel, mdotOx = mdotOx, mdotOF = mdotF, mdotOx_err = mdotOx_err, mdotF_err = mdotF_err)
+        res_dict["ER"                           ] = ER
+        res_dict["ER_err"                       ] = ER_err
+
+        # Coolant Percentage
+        CP, CP_err = calcCP(mdotTotal = mdotT, mdotCoolant = mdotCo, mdotTotal_err = mdotT_err, mdotCoolant_err = mdotCo_err)
+        res_dict["CP"                           ] = CP
+        res_dict["ER_err"                       ] = CP_err
+
+        # Calculate pressures
+        p0, p0_err = burnTimeTHC.get_time_average(target_columnm=["P0"], allow_return_tstd_err=True)
+        p1, p1_err = burnTimeTHC.get_time_average(target_columnm=["P1"], allow_return_tstd_err=True)
+        p2, p2_err = burnTimeTHC.get_time_average(target_columnm=["P2"], allow_return_tstd_err=True)
+        p3, p3_err = burnTimeTHC.get_time_average(target_columnm=["P3"], allow_return_tstd_err=True)
+        pb, pb_err = preBurnTHC.get_time_average(target_columnm=["PV"], allow_return_tstd_err=True)
+        res_dict["P0_MPa"                       ] = p0
+        res_dict["P0_err_MPA"                   ] = p0_err
+        res_dict["P1_MPa"                       ] = p1
+        res_dict["P1_err_MPA"                   ] = p1_err
+        res_dict["P2_MPa"                       ] = p2
+        res_dict["P2_err_MPA"                   ] = p2_err
+        res_dict["P3_MPa"                       ] = p3
+        res_dict["P3_err_MPA"                   ] = p3_err
+        res_dict["Pb_MPa"                       ] = pb
+        res_dict["Pb_err_MPA"                   ] = pb_err
+
+        # Back thrust
+        F, F_err = burnTimeTHC.get_time_average(target_columnm=["T"], allow_return_tstd_err=True)
+
+        # calculate peformance values
+        cstarEx, cstarEx_err = calcExpCstar(chamber, mdotT, MPa2Pa(p1), mdotT_err, MPa2Pa(p1_err))
+        print(cstarEx, cstarEx_err)
+        # cstarIsp, cstarIsp_err = calcExpCstar(chamber, mdotT, MPa2Pa(p1), mdotT_err, MPa2Pa(p1_err))
+
+
+
+def write2file(summary):
+    return
+
 
 if __name__ == "__main__":
 
@@ -170,15 +384,19 @@ if __name__ == "__main__":
     # Iterate through all test cases
     if "All" in tests:
         for t in sorted(os.listdir(parentDirectory)):
-            # Open Pressure Time History
+            # Prepare file and directory names
             fileDirectory = os.path.join(parentDirectory,t)
             filePath = str(os.path.join(fileDirectory,t)) + "_P.csv"
             testName = t
-            performanceSummary(filePath, testName, stage)
+            # Summarise results
+            summary = performanceSummary(filePath, testName, stage)
+
+            # Save to summary cvs
+            write2file(summary)
 
     elif len(tests) > 0:
         for t in tests:
-             # Open Pressure Time History
+             # Prepare file and directory names
             fileDirectory = os.path.join(parentDirectory,t)
             filePath = str(os.path.join(fileDirectory,t)) + "_P.csv"
             testName = t
