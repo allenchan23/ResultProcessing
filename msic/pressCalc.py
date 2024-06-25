@@ -74,7 +74,10 @@ class RepresentativeValuesGenerater():
 
 
     def get_time_average(self, target_columnm, allow_return_tstd_err=False):
-        target_values = self.target_df[(self.target_df[self.time_column] >= self.t_start) & (df1[self.time_column] <= self.t_end)][target_columnm]
+
+        print(self.target_df)
+        target_values = self.target_df[(self.target_df[self.time_column] >= self.t_start) & (self.target_df[self.time_column] <= self.t_end)][target_columnm]
+
         if allow_return_tstd_err:
             tstd_err = tstd(target_values, ddof=1)[0]
             return target_values.mean().iloc[0], tstd_err
